@@ -109,7 +109,11 @@ public class Lexer {
                     break;
 
                 default:
-                    throw new RuntimeException("Unknown char: " + c);
+                    if (Character.isWhitespace(c) || c < 32) {
+                        advance();
+                    } else {
+                        throw new RuntimeException("Unknown char: " + c + " (code " + (int) c + ")");
+                    }
             }
             advance();
         }
