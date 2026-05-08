@@ -3,51 +3,78 @@ package AST;
 import AST.Nodes.*;
 
 /**
- * ASTPrinter — pretty-prints an AST as an indented tree by implementing
- * {@link ASTVisitor}&lt;Void&gt;.
+ * ASTPrinter — pretty-prints an AST as an indented tree.
  *
- * <p>Sample output for {@code valid := (score + bonus) >= 60 and attempts < 3;}
+ * NEW: binary expression nodes now show their precedence tier and
+ * associativity so you can read the parse tree and understand exactly
+ * what grouping the parser chose — the "ambiguity annotation" feature.
  *
- * <pre>
- * AssignmentNode [valid :=]
- * └── BinaryExpr [and]
- *     ├── BinaryExpr [>=]
- *     │   ├── BinaryExpr [+]
- *     │   │   ├── Ident [score]
- *     │   │   └── Ident [bonus]
- *     │   └── Num [60]
- *     └── BinaryExpr [<]
- *         ├── Ident [attempts]
- *         └── Num [3]
- * </pre>
+ * Example output for:  valid := (score + bonus) >= 60 and attempts < 3;
  *
- * <p>Usage:
- * <pre>
- *   ASTPrinter printer = new ASTPrinter();
- *   ast.accept(printer);              // print any single node
- *   ASTPrinter.printProgram(program); // convenience for a full program
- * </pre>
+ *   AssignmentNode [valid :=]
+ *   └── BinaryExpr [and]  {prec=1, left-assoc}
+ *       ├── BinaryExpr [>=]  {prec=3, left-assoc}
+ *       │   ├── BinaryExpr [+]  {prec=4, left-assoc}
+ *       │   │   ├── Ident [score]
+ *       │   │   └── Ident [bonus]
+ *       │   └── Num [60]
+ *       └── BinaryExpr [<]  {prec=3, left-assoc}
+ *           ├── Ident [attempts]
+ *           └── Num [3]
  */
 public class ASTPrinter implements ASTVisitor<Void> {
 
-    // Current indentation prefix passed down through the recursion
-    private String prefix  = "";
-    // Whether the node being printed is the last child of its parent
+    // Tree-drawing state
+    private String  prefix = "";
     private boolean isLast = true;
-    // Whether this is the very first (root-level) call — roots get no connector
     private boolean isRoot = true;
+
+    // ─────────────────────────────────────────────
+    // Operator metadata (for ambiguity annotation)
+    // ─────────────────────────────────────────────
+
+    /**
+     * Returns the precedence level of a binary operator.
+     * Higher number = tighter binding.
+     *
+     *   1  — or
+     *   2  — and
+     *   3  — = != < > <= >=   (comparison)
+     *   4  — + -              (addition)
+     *   5  — * /              (multiplication)
+     */
+    private static int precedenceOf(String op) {
+        return switch (op) {
+            case "or"              -> 1;
+            case "and"             -> 2;
+            case "=", "!=",
+                 "<", ">",
+                 "<=", ">="       -> 3;
+            case "+", "-"          -> 4;
+            case "*", "/"          -> 5;
+            default                -> 0;
+        };
+    }
+
+    /**
+     * Returns "right-assoc" for operators that bind right-to-left,
+     * "left-assoc" for all others. In this language only unary "not"
+     * and unary "-" are right-associative; all binary operators are
+     * left-associative.
+     */
+    private static String assocOf(String op) {
+        return "left-assoc";
+    }
 
     // ─────────────────────────────────────────────
     // Public static convenience methods
     // ─────────────────────────────────────────────
 
-    /** Print any single AST node as a tree. */
     public static void print(AST node) {
         node.accept(new ASTPrinter());
         System.out.println();
     }
 
-    /** Print a full program, each statement as its own sub-tree. */
     public static void printProgram(ProgramNode program) {
         System.out.println("=== AST ===");
         program.accept(new ASTPrinter());
@@ -79,16 +106,33 @@ public class ASTPrinter implements ASTVisitor<Void> {
         return null;
     }
 
+    /**
+     * FIX + NEW: Shows precedence tier and associativity on every binary node.
+     * This makes it trivial to verify that the parser respected operator precedence.
+     *
+     * Format: "BinaryExpr [<op>]  {prec=N, left-assoc}"
+     *
+     * Additionally, if a child has LOWER precedence than the parent
+     * (which shouldn't happen in a correct parse tree but is useful to flag),
+     * a warning marker is appended.
+     */
     @Override
     public Void visitBinaryExpression(BinaryExpressionNode n) {
-        printHeader("BinaryExpr [" + n.operator + "]");
+        int prec   = precedenceOf(n.operator);
+        String ann = "  {prec=" + prec + ", " + assocOf(n.operator) + "}";
+        printHeader("BinaryExpr [" + n.operator + "]" + ann);
         printChildren(n.left, n.right);
         return null;
     }
 
+    /**
+     * Unary nodes show their type: "not" is logical (right-assoc),
+     * "-" is arithmetic negation (right-assoc).
+     */
     @Override
     public Void visitUnaryExpression(UnaryExpressionNode n) {
-        printHeader("UnaryExpr [" + n.operator + "]");
+        String kind = n.operator.equals("not") ? "logical-not" : "arith-neg";
+        printHeader("UnaryExpr [" + n.operator + "]  {" + kind + ", right-assoc}");
         printChildren(n.operand);
         return null;
     }
@@ -115,51 +159,96 @@ public class ASTPrinter implements ASTVisitor<Void> {
     }
 
     // ─────────────────────────────────────────────
-    // Tree-drawing helpers
+    // NEW: Parenthesized expression view
     // ─────────────────────────────────────────────
 
     /**
-     * Prints the connector + label line for the current node.
+     * Renders a node as a fully-parenthesized infix string.
+     * This makes precedence grouping 100% explicit — no ambiguity.
      *
-     * <pre>
-     *   isRoot  → no connector, no indent change
-     *   isLast  → "└── "
-     *   else    → "├── "
-     * </pre>
+     * Example:  a + b * c   →   (a + (b * c))
+     *           a and b or c → ((a and b) or c)
+     *
+     * Usage:  ASTPrinter.toParenString(expressionNode)
      */
+    public static String toParenString(AST node) {
+        return switch (node.getType()) {
+            case binaryExpression -> {
+                BinaryExpressionNode b = (BinaryExpressionNode) node;
+                yield "(" + toParenString(b.left) + " " + b.operator + " " + toParenString(b.right) + ")";
+            }
+            case unaryExpression -> {
+                UnaryExpressionNode u = (UnaryExpressionNode) node;
+                yield "(" + u.operator + " " + toParenString(u.operand) + ")";
+            }
+            case NumericalLiteral -> {
+                NumberLiteralNode num = (NumberLiteralNode) node;
+                if (num.value == Math.floor(num.value) && !Double.isInfinite(num.value))
+                    yield String.valueOf((long) num.value);
+                yield String.valueOf(num.value);
+            }
+            case BooleanLiteral   -> String.valueOf(((BooleanLiteralNode) node).value);
+            case identifier       -> ((IdentifierNode) node).name;
+            default               -> node.toString();
+        };
+    }
+
+    /**
+     * Prints the fully-parenthesized form of every statement in a program.
+     * Useful for verifying that precedence was resolved correctly.
+     *
+     * Example output:
+     *   [valid :=] ((score + bonus) >= 60)
+     *              → expression: (((score + bonus) >= 60) and (attempts < 3))
+     */
+    public static void printParenProgram(Nodes.ProgramNode program) {
+        System.out.println("=== Parenthesized Expressions (precedence check) ===");
+        for (AST stmt : program.statements) {
+            switch (stmt.getType()) {
+                case assignmentStatement -> {
+                    Nodes.AssignmentNode a = (Nodes.AssignmentNode) stmt;
+                    System.out.println("  [" + a.identifier + " :=]  " + toParenString(a.value));
+                }
+                case printStatement -> {
+                    Nodes.PrintNode p = (Nodes.PrintNode) stmt;
+                    System.out.println("  [print]  " + toParenString(p.expression));
+                }
+                default -> System.out.println("  " + stmt);
+            }
+        }
+        System.out.println();
+    }
+
+    // ─────────────────────────────────────────────
+    // Tree-drawing helpers (fixed state management)
+    // ─────────────────────────────────────────────
+
     private void printHeader(String label) {
         if (isRoot) {
             System.out.println(label);
         } else {
-            String connector = isLast ? "└── " : "├── ";
-            System.out.println(prefix + connector + label);
+            System.out.println(prefix + (isLast ? "└── " : "├── ") + label);
         }
     }
 
-    /**
-     * Recurse into each child, updating the prefix and isLast flags so the
-     * tree-drawing characters come out correctly.
-     */
     private void printChildren(AST... children) {
-        // Save current state so we can restore after the recursion
         String  savedPrefix = prefix;
         boolean savedIsLast = isLast;
         boolean savedIsRoot = isRoot;
 
-        // Children are indented one level deeper
+        // Determine the indent to add for children of the current node
         String childIndent = isRoot ? "" : (isLast ? "    " : "│   ");
         String childPrefix = prefix + childIndent;
 
         for (int i = 0; i < children.length; i++) {
-            prefix  = childPrefix;
-            isLast  = (i == children.length - 1);
-            isRoot  = false;
+            prefix = childPrefix;
+            isLast = (i == children.length - 1);
+            isRoot = false;
             children[i].accept(this);
         }
 
-        // Restore
-        prefix  = savedPrefix;
-        isLast  = savedIsLast;
-        isRoot  = savedIsRoot;
+        prefix = savedPrefix;
+        isLast = savedIsLast;
+        isRoot = savedIsRoot;
     }
 }

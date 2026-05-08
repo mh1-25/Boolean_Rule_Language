@@ -91,40 +91,43 @@ public class App {
     // Core runner
     // ─────────────────────────────────────────────
 
-    private static void runProgram(String label, String source) {
-        System.out.println("┌─────────────────────────────────────────────");
-        System.out.println("│ " + label);
-        System.out.println("│ Source: " + source.strip().replace("\n", "  "));
-        System.out.println("└─────────────────────────────────────────────");
+private static void runProgram(String label, String source) {
+    System.out.println("┌─────────────────────────────────────────────");
+    System.out.println("│ " + label);
+    System.out.println("│ Source: " + source.strip().replace("\n", "  "));
+    System.out.println("└─────────────────────────────────────────────");
 
-        try {
-            // 1. Lex
-            Lexer lexer = new Lexer(source);
-            List<Token> tokens = lexer.tokenize();
+    try {
+        // 1. Lex
+        Lexer lexer = new Lexer(source);
+        List<Token> tokens = lexer.tokenize();
 
-            System.out.println("--- Tokens ---");
-            for (Token token : tokens) {
-                System.out.println("  " + token.toString());
-            }
-
-            // 2. Parse → AST
-            Parser parser = new Parser(tokens);
-            Nodes.ProgramNode ast = parser.parse();
-
-            // 3. Print the AST
-            ASTPrinter.printProgram(ast);
-
-            // 4. Interpret
-            System.out.println("--- Output ---");
-            Interpreter interpreter = new Interpreter();
-            interpreter.run(ast);
-
-        } catch (RuntimeException e) {
-            System.out.println("ERROR: " + e.getMessage());
+        System.out.println("--- Tokens ---");
+        for (Token token : tokens) {
+            System.out.println("  " + token);
         }
 
-        System.out.println();
+        // 2. Parse → AST
+        Parser parser = new Parser(tokens);
+        Nodes.ProgramNode ast = parser.parse();
+
+        // 3. Print the AST tree (with precedence/ambiguity annotations)
+        ASTPrinter.printProgram(ast);
+
+        // 4. NEW: Print fully-parenthesized form for precedence verification
+        ASTPrinter.printParenProgram(ast);
+
+        // 5. Interpret
+        System.out.println("--- Output ---");
+        Interpreter interpreter = new Interpreter();
+        interpreter.run(ast);
+
+    } catch (RuntimeException e) {
+        System.out.println("ERROR: " + e.getMessage());
     }
+
+    System.out.println();
+}
 
     // ─────────────────────────────────────────────
     // Help text

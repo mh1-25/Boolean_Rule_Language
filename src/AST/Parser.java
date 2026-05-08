@@ -162,13 +162,23 @@ public class Parser {
         return parseComparison();
     }
 
-    /** comparison → addition ( ('='|'!='|'<'|'>'|'<='|'>=') addition )? */
+    /** comparison → addition ( ('='|'!='|'<'|'>'|'<='|'>=') addition )?
+     *  Non-associative: chained comparisons are a syntax error with a clear message. */
     private AST parseComparison() {
         AST left = parseAddition();
         if (isComparisonOperator(current().getType())) {
             String op = consume().getValue();
             AST right = parseAddition();
-            return new Nodes.BinaryExpressionNode(left, op, right);
+            AST result = new Nodes.BinaryExpressionNode(left, op, right);
+
+            // NEW: detect chained comparisons and give a clear error
+            if (isComparisonOperator(current().getType())) {
+                throw new RuntimeException(
+                    "Syntax error: chained comparison '" + current().getValue() +
+                    "' is not allowed. Use 'and' to combine: (a < b) and (b < c)"
+                );
+            }
+            return result;
         }
         return left;
     }
