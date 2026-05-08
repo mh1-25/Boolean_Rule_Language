@@ -1,79 +1,111 @@
-import java.util.List;
-
-import Token.Lexer;
-import Token.Token;
-import AST.Parser;
-import AST.Nodes;
 import AST.ASTPrinter;
 import AST.Interpreter;
+import AST.Nodes;
+import AST.Parser;
+import Token.Lexer;
+import Token.Token;
+import java.util.List;
+import java.util.Scanner;
 
 public class App {
 
     public static void main(String[] args) {
-        System.out.println("╔══════════════════════════════════════╗");
-        System.out.println("║  Boolean Rule Language — Demo        ║");
-        System.out.println("╚══════════════════════════════════════╝\n");
+        Scanner scanner = new Scanner(System.in);
 
-        // ── Test cases from the project spec ──────────────────────────────
-        runProgram("Basic arithmetic print",
-                "x := 5;\n" +
-                        "y := 10;\n" +
-                        "print(x + y);\n");
+        System.out.println("╔══════════════════════════════════════════════════════╗");
+        System.out.println("║       Boolean Rule Language — Interactive Mode       ║");
+        System.out.println("╠══════════════════════════════════════════════════════╣");
+        System.out.println("║  Supported tokens:                                   ║");
+        System.out.println("║  • Identifiers : any letter/digit word               ║");
+        System.out.println("║  • Numbers     : 0 1 42 100 ...                      ║");
+        System.out.println("║  • Booleans    : true  false                         ║");
+        System.out.println("║  • Logical     : and  or  not                        ║");
+        System.out.println("║  • Arithmetic  : +  -  *  /                          ║");
+        System.out.println("║  • Comparison  : =  !=  <  >  <=  >=                 ║");
+        System.out.println("║  • Assignment  : :=                                  ║");
+        System.out.println("║  • Statement   : print  ;                            ║");
+        System.out.println("║  • Grouping    : ( )                                 ║");
+        System.out.println("║                                                      ║");
+        System.out.println("║  Supported statement types (AST nodes):              ║");
+        System.out.println("║  • assignmentStatement : x := <expr> ;               ║");
+        System.out.println("║  • printStatement      : print <expr> ;              ║");
+        System.out.println("║                                                      ║");
+        System.out.println("║  Type 'exit' to quit, 'demo' to run built-in tests   ║");
+        System.out.println("╚══════════════════════════════════════════════════════╝");
+        System.out.println();
 
-        runProgram("Adult check",
-                "age := 20;\n" +
-                        "adult := age >= 18;\n" +
-                        "print adult;\n");
+        StringBuilder program = new StringBuilder();
 
-        runProgram("Approval rule",
-                "income  := 6000;\n" +
-                        "blocked := false;\n" +
-                        "approved := income > 5000 and not blocked;\n" +
-                        "print approved;\n");
+        while (true) {
+            System.out.print(">> ");
+            String line = scanner.nextLine().trim();
 
-        runProgram("Composite rule with arithmetic subexpr",
-                "score    := 55;\n" +
-                        "bonus    := 10;\n" +
-                        "attempts := 2;\n" +
-                        "valid := (score + bonus) >= 60 and attempts < 3;\n" +
-                        "print valid;\n");
+            if (line.equalsIgnoreCase("exit")) {
+                System.out.println("Goodbye!");
+                break;
+            }
 
-        runProgram("Boolean literals and 'or'",
-                "a := true;\n" +
-                        "b := false;\n" +
-                        "result := a or b;\n" +
-                        "print result;\n");
+            if (line.equalsIgnoreCase("demo")) {
+                runDemoTests();
+                continue;
+            }
 
-        runProgram("Chained comparisons",
-                "x := 7;\n" +
-                        "big   := x > 10;\n" +
-                        "small := x < 5;\n" +
-                        "neither := not big and not small;\n" +
-                        "print neither;\n");
+            if (line.equalsIgnoreCase("run")) {
+                // Run everything accumulated so far
+                if (program.length() == 0) {
+                    System.out.println("Nothing to run. Enter some statements first.");
+                } else {
+                    runProgram("User Program", program.toString());
+                    program.setLength(0); // clear after run
+                }
+                continue;
+            }
 
-        runProgram("Invalid: missing semicolon (syntax error)",
-                "x := 42\n" +
-                        "print x;\n");
+            if (line.equalsIgnoreCase("clear")) {
+                program.setLength(0);
+                System.out.println("Program cleared.");
+                continue;
+            }
 
-        runProgram("Invalid: undefined variable (runtime error)",
-                "print undefinedVar;\n");
+            if (line.equalsIgnoreCase("help")) {
+                printHelp();
+                continue;
+            }
 
-        runProgram("Invalid: type mismatch (runtime error)",
-                "x := 5 + true;\n" +
-                        "print x;\n");
+            if (line.isEmpty()) continue;
+
+            // Accumulate lines — auto-run if line ends with ';'
+            program.append(line).append("\n");
+
+            // If the line ends with a semicolon, run immediately
+            if (line.endsWith(";")) {
+                runProgram("Statement", program.toString());
+                program.setLength(0);
+            }
+        }
+
+        scanner.close();
     }
 
-    /** Run a single test case: lex → parse → print AST → interpret */
+    // ─────────────────────────────────────────────
+    // Core runner
+    // ─────────────────────────────────────────────
+
     private static void runProgram(String label, String source) {
-        System.out.println("┌─────────────────────────────────────");
+        System.out.println("┌─────────────────────────────────────────────");
         System.out.println("│ " + label);
         System.out.println("│ Source: " + source.strip().replace("\n", "  "));
-        System.out.println("└─────────────────────────────────────");
+        System.out.println("└─────────────────────────────────────────────");
 
         try {
             // 1. Lex
             Lexer lexer = new Lexer(source);
             List<Token> tokens = lexer.tokenize();
+
+            System.out.println("--- Tokens ---");
+            for (Token token : tokens) {
+                System.out.println("  " + token.toString());
+            }
 
             // 2. Parse → AST
             Parser parser = new Parser(tokens);
@@ -92,5 +124,89 @@ public class App {
         }
 
         System.out.println();
+    }
+
+    // ─────────────────────────────────────────────
+    // Help text
+    // ─────────────────────────────────────────────
+
+    private static void printHelp() {
+        System.out.println();
+        System.out.println("  Commands:");
+        System.out.println("    run   — execute the accumulated program");
+        System.out.println("    clear — clear the accumulated program");
+        System.out.println("    demo  — run all built-in test cases");
+        System.out.println("    help  — show this help message");
+        System.out.println("    exit  — quit the interpreter");
+        System.out.println();
+        System.out.println("  Examples:");
+        System.out.println("    >> x := 5;");
+        System.out.println("    >> y := 10;");
+        System.out.println("    >> print x + y;");
+        System.out.println();
+        System.out.println("  Multi-line (type 'run' when done):");
+        System.out.println("    >> score := 55");
+        System.out.println("    >> bonus := 10");
+        System.out.println("    >> valid := (score + bonus) >= 60 and score < 100;");
+        System.out.println("    >> print valid;");
+        System.out.println("    >> run");
+        System.out.println();
+    }
+
+    // ─────────────────────────────────────────────
+    // Built-in demo test cases
+    // ─────────────────────────────────────────────
+
+    private static void runDemoTests() {
+        System.out.println("\n══════════ DEMO TESTS ══════════\n");
+
+        runProgram("Basic arithmetic print",
+                "x := 5;\n" +
+                "y := 10;\n" +
+                "print x + y;\n");
+
+        runProgram("Adult check",
+                "age := 20;\n" +
+                "adult := age >= 18;\n" +
+                "print adult;\n");
+
+        runProgram("Approval rule",
+                "income  := 6000;\n" +
+                "blocked := false;\n" +
+                "approved := income > 5000 and not blocked;\n" +
+                "print approved;\n");
+
+        runProgram("Composite rule with arithmetic subexpr",
+                "score    := 55;\n" +
+                "bonus    := 10;\n" +
+                "attempts := 2;\n" +
+                "valid := (score + bonus) >= 60 and attempts < 3;\n" +
+                "print valid;\n");
+
+        runProgram("Boolean literals and 'or'",
+                "a := true;\n" +
+                "b := false;\n" +
+                "result := a or b;\n" +
+                "print result;\n");
+
+        runProgram("Chained comparisons",
+                "x := 7;\n" +
+                "big   := x > 10;\n" +
+                "small := x < 5;\n" +
+                "neither := not big and not small;\n" +
+                "print neither;\n");
+
+        runProgram("Invalid: missing semicolon (syntax error)",
+                "x := 42\n" +
+                "print x;\n");
+
+        runProgram("Invalid: undefined variable (runtime error)",
+                "print undefinedVar;\n");
+
+        runProgram("Invalid: type mismatch (runtime error)",
+                "x := 5 + true;\n" +
+                "print x;\n");
+
+        System.out.println("══════════ END DEMO ══════════\n");
     }
 }
