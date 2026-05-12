@@ -66,7 +66,7 @@ public interface AST {
      */
     default boolean isStatement() {
         return switch (getType()) {
-            case program, assignmentStatement, printStatement -> true;
+            case program, assignmentStatement, printStatement, priorityStatement -> true;
             default -> false;
         };
     }

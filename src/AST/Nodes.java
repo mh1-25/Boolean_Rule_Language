@@ -1,5 +1,6 @@
 package AST;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -269,6 +270,84 @@ public class Nodes {
 
         @Override public String toString() {
             return "Ident{" + name + "}";
+        }
+    }
+    
+    // ═════════════════════════════════════════════
+    // Aggregation — function calls
+    // ═════════════════════════════════════════════
+
+    /**
+     * FunctionCallNode — {@code name(arg1, arg2, ...)}
+     *
+     * <p>Supports built-in aggregation functions:
+     * <ul>
+     *   <li>Numeric : {@code sum  min  max  count  avg}</li>
+     *   <li>Logical : {@code any  all}</li>
+     * </ul>
+     * {@code any} and {@code all} short-circuit; the rest evaluate all arguments eagerly.
+     */
+    public static class FunctionCallNode implements AST {
+
+        /** The function name exactly as written, e.g. {@code "sum"}. */
+        public final String name;
+
+        /** Ordered list of argument expressions. */
+        public final List<AST> arguments;
+
+        public FunctionCallNode(String name, List<AST> arguments) {
+            this.name      = name;
+            this.arguments = List.copyOf(arguments);
+        }
+
+        @Override public AST_Type getType() { return AST_Type.functionCall; }
+
+        @Override public <R> R accept(ASTVisitor<R> v) { return v.visitFunctionCall(this); }
+
+        @Override public String toString() {
+            return "FuncCall{" + name + "(" + arguments + ")}";
+        }
+    }
+
+    // ═════════════════════════════════════════════
+    // Priorities
+    // ═════════════════════════════════════════════
+
+    /**
+     * PriorityStatementNode — {@code priority N statement}
+     *
+     * <p>Wraps any statement with a non-negative integer priority.
+     * Lower numbers execute first.  Statements without a priority annotation
+     * are treated as priority {@link Integer#MAX_VALUE} and run last in source
+     * order after all priority-annotated statements.
+     *
+     * <p>Example:
+     * <pre>
+     *   priority 2  y := x * 2;
+     *   priority 1  x := 10;
+     *   print y;          ← no priority: runs after both above
+     * </pre>
+     * Execution order: {@code x := 10} (P1), {@code y := x*2} (P2), {@code print y} (last).
+     */
+    public static class PriorityStatementNode implements AST {
+
+        /** Execution priority — lower value executes first. */
+        public final int priority;
+
+        /** The wrapped statement. */
+        public final AST statement;
+
+        public PriorityStatementNode(int priority, AST statement) {
+            this.priority  = priority;
+            this.statement = statement;
+        }
+
+        @Override public AST_Type getType() { return AST_Type.priorityStatement; }
+
+        @Override public <R> R accept(ASTVisitor<R> v) { return v.visitPriority(this); }
+
+        @Override public String toString() {
+            return "Priority{" + priority + ": " + statement + "}";
         }
     }
 }

@@ -4,9 +4,11 @@ public enum AST_Type {
     program,
     identifier,
     binaryExpression,
-    unaryExpression,       // NEW: 'not' and unary minus '-'
+    unaryExpression,
     NumericalLiteral,
     BooleanLiteral,
     printStatement,
     assignmentStatement,
+    functionCall,        // aggregation: sum(), min(), max(), count(), avg(), any(), all()
+    priorityStatement,   // priority N statement
 }

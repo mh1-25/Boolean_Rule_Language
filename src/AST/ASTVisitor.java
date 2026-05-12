@@ -1,6 +1,16 @@
 package AST;
 
 import AST.Nodes.*;
+import AST.Nodes.AssignmentNode;
+import AST.Nodes.BinaryExpressionNode;
+import AST.Nodes.BooleanLiteralNode;
+import AST.Nodes.FunctionCallNode;
+import AST.Nodes.IdentifierNode;
+import AST.Nodes.NumberLiteralNode;
+import AST.Nodes.PrintNode;
+import AST.Nodes.PriorityStatementNode;
+import AST.Nodes.ProgramNode;
+import AST.Nodes.UnaryExpressionNode;
 
 /**
  * ASTVisitor&lt;R&gt; — generic Visitor interface for the AST node hierarchy.
@@ -98,4 +108,20 @@ public interface ASTVisitor<R> {
      * Visit an {@link IdentifierNode} — a variable reference such as {@code age}.
      */
     R visitIdentifier(IdentifierNode node);
+    
+    // ─────────────────────────────────────────────
+    // Aggregation & priorities
+    // ─────────────────────────────────────────────
+
+    /**
+     * Visit a {@link FunctionCallNode} — {@code name(arg1, arg2, ...)}.
+     * Built-in functions: sum, min, max, count, avg (numeric); any, all (logical).
+     */
+    R visitFunctionCall(FunctionCallNode node);
+
+    /**
+     * Visit a {@link PriorityStatementNode} — {@code priority N statement}.
+     * The interpreter executes lower-numbered priorities first.
+     */
+    R visitPriority(PriorityStatementNode node);
 }

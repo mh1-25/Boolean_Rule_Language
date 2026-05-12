@@ -1,10 +1,9 @@
 package AST;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import Token.Token;
 import Token.TokenType;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Recursive-descent parser.
@@ -12,7 +11,8 @@ import Token.TokenType;
  * GRAMMAR (operator precedence, lowest → highest binding)
  * ─────────────────────────────────────────────────────────
  * program    → statement* EOF
- * statement  → assignStmt | printStmt
+ * statement  → priorityStmt | assignStmt | printStmt
+ * priorityStmt → 'priority' NUMBER statement
  * assignStmt → IDENTIFIER ':=' expression ';'
  * printStmt  → 'print' expression ';'
  *
@@ -24,7 +24,11 @@ import Token.TokenType;
  * addition   → multiply ( ('+'|'-') multiply )*
  * multiply   → unary    ( ('*'|'/') unary    )*
  * unary      → '-' unary | primary
- * primary    → NUMBER | 'true' | 'false' | IDENTIFIER | '(' expression ')'
+ * primary    → NUMBER | 'true' | 'false'
+ *            | IDENTIFIER '(' argList ')'   ← function call
+ *            | IDENTIFIER
+ *            | '(' expression ')'
+ * argList    → ( expression ( ',' expression )* )?
  */
 public class Parser {
 
@@ -92,6 +96,10 @@ public class Parser {
     // ─────────────────────────────────────────────
 
     private AST parseStatement() {
+        // priority N statement
+        if (check(TokenType.PRIORITY)) {
+            return parsePriorityStatement();
+        }
         // print expression ;
         if (check(TokenType.PRINT)) {
             return parsePrintStatement();
@@ -104,6 +112,32 @@ public class Parser {
             "Syntax error: unexpected token '" + current().getValue() +
             "' at position " + pos + ". Expected a statement."
         );
+    }
+
+    /**
+     * priorityStmt → 'priority' NUMBER statement
+     *
+     * The priority number must be a non-negative integer (e.g. 1, 2, 10).
+     * Lower numbers run first.  Statements without a priority run last.
+     *
+     * Example:
+     *   priority 1  x := 10;
+     *   priority 2  y := x * 2;
+     */
+    private AST parsePriorityStatement() {
+        expect(TokenType.PRIORITY);
+        Token numTok = expect(TokenType.NUMBER);
+
+        double val = Double.parseDouble(numTok.getValue());
+        if (val != Math.floor(val) || val < 0) {
+            throw new RuntimeException(
+                "Syntax error: priority must be a non-negative integer, got '" + numTok.getValue() + "'"
+            );
+        }
+        int priority = (int) val;
+
+        AST stmt = parseStatement(); // parse the wrapped statement
+        return new Nodes.PriorityStatementNode(priority, stmt);
     }
 
     private AST parsePrintStatement() {
@@ -241,6 +275,11 @@ public class Parser {
         }
 
         if (t.getType() == TokenType.IDENTIFIER) {
+            // Look ahead: if next token is '(', this is a function call
+            if (peek(1).getType() == TokenType.LPAREN) {
+                consume(); // consume function name
+                return parseFunctionCall(t.getValue());
+            }
             consume();
             return new Nodes.IdentifierNode(t.getValue());
         }
@@ -257,5 +296,25 @@ public class Parser {
             "' (" + t.getType() + ") at position " + pos +
             ". Expected a number, boolean, identifier, or '('."
         );
+    }
+    /**
+     * argList → ( expression ( ',' expression )* )?
+     *
+     * Called after the function name has been consumed.
+     * Parses:  '(' expr, expr, ... ')'
+     */
+    private AST parseFunctionCall(String name) {
+        expect(TokenType.LPAREN);
+        List<AST> args = new ArrayList<>();
+
+        if (!check(TokenType.RPAREN)) {
+            args.add(parseExpression());
+            while (match(TokenType.COMMA)) {
+                args.add(parseExpression());
+            }
+        }
+
+        expect(TokenType.RPAREN);
+        return new Nodes.FunctionCallNode(name, args);
     }
 }

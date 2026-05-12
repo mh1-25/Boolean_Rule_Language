@@ -59,13 +59,14 @@ public class Lexer {
             if (Character.isLetter(c)) {
                 String word = readIdentifier();
                 switch (word) {
-                    case "true"  -> tokens.add(new Token(TokenType.TRUE, word));
-                    case "false" -> tokens.add(new Token(TokenType.FALSE, word));
-                    case "and"   -> tokens.add(new Token(TokenType.AND, word));
-                    case "or"    -> tokens.add(new Token(TokenType.OR, word));
-                    case "not"   -> tokens.add(new Token(TokenType.NOT, word));
-                    case "print" -> tokens.add(new Token(TokenType.PRINT, word));
-                    default      -> tokens.add(new Token(TokenType.IDENTIFIER, word));
+                    case "true"     -> tokens.add(new Token(TokenType.TRUE,     word));
+                    case "false"    -> tokens.add(new Token(TokenType.FALSE,    word));
+                    case "and"      -> tokens.add(new Token(TokenType.AND,      word));
+                    case "or"       -> tokens.add(new Token(TokenType.OR,       word));
+                    case "not"      -> tokens.add(new Token(TokenType.NOT,      word));
+                    case "print"    -> tokens.add(new Token(TokenType.PRINT,    word));
+                    case "priority" -> tokens.add(new Token(TokenType.PRIORITY, word));
+                    default         -> tokens.add(new Token(TokenType.IDENTIFIER, word));
                 }
                 continue;
             }
@@ -75,7 +76,7 @@ public class Lexer {
                 continue;
             }
 
-            advance(); 
+            advance();
             switch (c) {
                 case '+' -> tokens.add(new Token(TokenType.PLUS,      "+"));
                 case '-' -> tokens.add(new Token(TokenType.MINUS,     "-"));
@@ -84,6 +85,7 @@ public class Lexer {
                 case '(' -> tokens.add(new Token(TokenType.LPAREN,    "("));
                 case ')' -> tokens.add(new Token(TokenType.RPAREN,    ")"));
                 case ';' -> tokens.add(new Token(TokenType.SEMICOLON, ";"));
+                case ',' -> tokens.add(new Token(TokenType.COMMA,     ","));
                 case '=' -> tokens.add(new Token(TokenType.EQ,        "="));
 
                 case ':' -> {

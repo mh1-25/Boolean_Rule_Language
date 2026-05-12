@@ -1,9 +1,20 @@
 package AST;
 
+import AST.Nodes.AssignmentNode;
+import AST.Nodes.BinaryExpressionNode;
+import AST.Nodes.BooleanLiteralNode;
+import AST.Nodes.FunctionCallNode;
+import AST.Nodes.IdentifierNode;
+import AST.Nodes.NumberLiteralNode;
+import AST.Nodes.PrintNode;
+import AST.Nodes.PriorityStatementNode;
+import AST.Nodes.ProgramNode;
+import AST.Nodes.UnaryExpressionNode;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-
-import AST.Nodes.*;
 
 /**
  * Interpreter — tree-walking evaluator that implements {@link ASTVisitor}&lt;Object&gt;.
@@ -14,7 +25,18 @@ import AST.Nodes.*;
  *   <li>{@code Boolean} — for boolean results</li>
  * </ul>
  *
- * Any type mismatch raises a {@link RuntimeException} with a descriptive message.
+ * <h3>Priority execution</h3>
+ * {@code visitProgram} performs a stable sort of statements by priority before
+ * executing them.  Statements wrapped in {@link PriorityStatementNode} carry an
+ * integer priority; statements without a priority annotation are assigned
+ * {@link Integer#MAX_VALUE} and therefore always run last, in source order.
+ *
+ * <h3>Aggregation functions</h3>
+ * {@code visitFunctionCall} dispatches to built-in functions:
+ * <ul>
+ *   <li>Numeric: {@code sum  min  max  count  avg}</li>
+ *   <li>Logical: {@code any  all}  (short-circuit evaluation)</li>
+ * </ul>
  *
  * <p>Usage:
  * <pre>
@@ -42,7 +64,13 @@ public class Interpreter implements ASTVisitor<Object> {
 
     @Override
     public Object visitProgram(ProgramNode n) {
-        for (var stmt : n.statements) stmt.accept(this);
+        List<AST> sorted = new ArrayList<>(n.statements);
+        // Stable sort: same-priority statements keep their source order.
+        sorted.sort(Comparator.comparingInt(stmt -> {
+            if (stmt instanceof PriorityStatementNode p) return p.priority;
+            return Integer.MAX_VALUE; // no priority → run last
+        }));
+        for (AST stmt : sorted) stmt.accept(this);
         return null;
     }
 
@@ -57,6 +85,12 @@ public class Interpreter implements ASTVisitor<Object> {
     public Object visitPrint(PrintNode n) {
         System.out.println(formatValue(n.expression.accept(this)));
         return null;
+    }
+
+    /** Unwrap and execute the inner statement. */
+    @Override
+    public Object visitPriority(PriorityStatementNode n) {
+        return n.statement.accept(this);
     }
 
     // ─────────────────────────────────────────────
@@ -116,6 +150,80 @@ public class Interpreter implements ASTVisitor<Object> {
     }
 
     // ─────────────────────────────────────────────
+    // ASTVisitor — aggregation function calls
+    // ─────────────────────────────────────────────
+
+    /**
+     * Dispatches to built-in aggregation functions.
+     *
+     * <p>Logical aggregators ({@code any}, {@code all}) use short-circuit evaluation:
+     * arguments are evaluated one by one and the function returns as soon as the
+     * result is determined.
+     *
+     * <p>Numeric aggregators ({@code sum}, {@code min}, {@code max}, {@code count},
+     * {@code avg}) evaluate all arguments eagerly.
+     *
+     * @throws RuntimeException for unknown function names or type mismatches
+     */
+    @Override
+    public Object visitFunctionCall(FunctionCallNode n) {
+
+        // ── Logical aggregation (short-circuit) ──────────────────────────────
+        switch (n.name.toLowerCase()) {
+            case "any" -> {
+                for (AST arg : n.arguments) {
+                    if (asBoolean(arg.accept(this), "any")) return true;
+                }
+                return false;
+            }
+            case "all" -> {
+                for (AST arg : n.arguments) {
+                    if (!asBoolean(arg.accept(this), "all")) return false;
+                }
+                return true;
+            }
+        }
+
+        // ── Numeric aggregation (eager) ──────────────────────────────────────
+        List<Object> vals = new ArrayList<>();
+        for (AST arg : n.arguments) vals.add(arg.accept(this));
+
+        return switch (n.name.toLowerCase()) {
+            case "sum" -> {
+                double s = 0;
+                for (Object v : vals) s += asDouble(v, "sum");
+                yield s;
+            }
+            case "min" -> {
+                requireArgs(n.name, vals, 1);
+                double m = asDouble(vals.get(0), "min");
+                for (int i = 1; i < vals.size(); i++)
+                    m = Math.min(m, asDouble(vals.get(i), "min"));
+                yield m;
+            }
+            case "max" -> {
+                requireArgs(n.name, vals, 1);
+                double m = asDouble(vals.get(0), "max");
+                for (int i = 1; i < vals.size(); i++)
+                    m = Math.max(m, asDouble(vals.get(i), "max"));
+                yield m;
+            }
+            case "count" -> (double) vals.size();
+            case "avg" -> {
+                requireArgs(n.name, vals, 1);
+                double s = 0;
+                for (Object v : vals) s += asDouble(v, "avg");
+                yield s / vals.size();
+            }
+            default -> throw new RuntimeException(
+                "Runtime error: unknown function '" + n.name +
+                "'. Built-in functions: sum, min, max, count, avg, any, all"
+            );
+        };
+    }
+
+
+    // ─────────────────────────────────────────────
     // ASTVisitor — leaf expressions
     // ─────────────────────────────────────────────
 
@@ -155,7 +263,7 @@ public class Interpreter implements ASTVisitor<Object> {
     }
 
     private boolean valuesEqual(Object a, Object b) {
-        if (a instanceof Double da && b instanceof Double db) return da.equals(db);
+        if (a instanceof Double  da && b instanceof Double  db) return da.equals(db);
         if (a instanceof Boolean ba && b instanceof Boolean bb) return ba.equals(bb);
         return false;
     }
@@ -164,6 +272,14 @@ public class Interpreter implements ASTVisitor<Object> {
         if (v instanceof Double)  return "number";
         if (v instanceof Boolean) return "boolean";
         return v == null ? "null" : v.getClass().getSimpleName();
+    }
+
+    private void requireArgs(String name, List<Object> args, int min) {
+        if (args.size() < min)
+            throw new RuntimeException(
+                "Runtime error: " + name + "() requires at least " + min +
+                " argument(s), got " + args.size()
+            );
     }
 
     // ─────────────────────────────────────────────
