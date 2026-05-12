@@ -1,6 +1,5 @@
 package AST;
 
-import AST.Nodes.*;
 import AST.Nodes.AssignmentNode;
 import AST.Nodes.BinaryExpressionNode;
 import AST.Nodes.BooleanLiteralNode;
@@ -12,50 +11,14 @@ import AST.Nodes.PriorityStatementNode;
 import AST.Nodes.ProgramNode;
 import AST.Nodes.UnaryExpressionNode;
 
-/**
- * ASTPrinter — pretty-prints an AST as an indented tree.
- *
- * NEW: binary expression nodes now show their precedence tier and
- * associativity so you can read the parse tree and understand exactly
- * what grouping the parser chose — the "ambiguity annotation" feature.
- *
- * Example output for:  valid := (score + bonus) >= 60 and attempts < 3;
- *
- *   AssignmentNode [valid :=]
- *   └── BinaryExpr [and]  {prec=1, left-assoc}
- *       ├── BinaryExpr [>=]  {prec=3, left-assoc}
- *       │   ├── BinaryExpr [+]  {prec=4, left-assoc}
- *       │   │   ├── Ident [score]
- *       │   │   └── Ident [bonus]
- *       │   └── Num [60]
- *       └── BinaryExpr [<]  {prec=3, left-assoc}
- *           ├── Ident [attempts]
- *           └── Num [3]
- */
 public class ASTPrinter implements ASTVisitor<Void> {
 
-    // Tree-drawing state
     private String  prefix          = "";
     private boolean isLast          = true;
     private boolean isRoot          = true;
 
-    // Set by a parent node before calling a child's accept(); consumed by printHeader.
     private String  pendingAnnotation = "";
 
-    // ─────────────────────────────────────────────
-    // Operator metadata (for ambiguity annotation)
-    // ─────────────────────────────────────────────
-
-    /**
-     * Returns the precedence level of a binary operator.
-     * Higher number = tighter binding.
-     *
-     *   1  — or
-     *   2  — and
-     *   3  — = != < > <= >=   (comparison)
-     *   4  — + -              (addition)
-     *   5  — * /              (multiplication)
-     */
     private static int precedenceOf(String op) {
         return switch (op) {
             case "or"                        -> 1;
@@ -68,19 +31,9 @@ public class ASTPrinter implements ASTVisitor<Void> {
         };
     }
 
-    /**
-     * Returns "right-assoc" for operators that bind right-to-left,
-     * "left-assoc" for all others. In this language only unary "not"
-     * and unary "-" are right-associative; all binary operators are
-     * left-associative.
-     */
     private static String assocOf(String op) {
         return "left-assoc";
     }
-
-    // ─────────────────────────────────────────────
-    // Public static convenience methods
-    // ─────────────────────────────────────────────
 
     public static void print(AST node) {
         node.accept(new ASTPrinter());
@@ -92,10 +45,6 @@ public class ASTPrinter implements ASTVisitor<Void> {
         program.accept(new ASTPrinter());
         System.out.println();
     }
-
-    // ─────────────────────────────────────────────
-    // ASTVisitor implementation
-    // ─────────────────────────────────────────────
 
     @Override
     public Void visitProgram(ProgramNode n) {
@@ -125,16 +74,6 @@ public class ASTPrinter implements ASTVisitor<Void> {
         return null;
     }
 
-    /**
-     * FIX + NEW: Shows precedence tier and associativity on every binary node.
-     * This makes it trivial to verify that the parser respected operator precedence.
-     *
-     * Format: "BinaryExpr [<op>]  {prec=N, left-assoc}"
-     *
-     * Additionally, if a child has LOWER precedence than the parent
-     * (which shouldn't happen in a correct parse tree but is useful to flag),
-     * a warning marker is appended.
-     */
     @Override
     public Void visitBinaryExpression(BinaryExpressionNode n) {
         int    myPrec = precedenceOf(n.operator);
@@ -144,10 +83,6 @@ public class ASTPrinter implements ASTVisitor<Void> {
         return null;
     }
 
-    /**
-     * Unary nodes show their type: "not" is logical (right-assoc),
-     * "-" is arithmetic negation (right-assoc).
-     */
     @Override
     public Void visitUnaryExpression(UnaryExpressionNode n) {
         String kind = n.operator.equals("not") ? "logical-not" : "arith-neg";
@@ -190,21 +125,6 @@ public class ASTPrinter implements ASTVisitor<Void> {
         return null;
     }
 
-    
-
-    // ─────────────────────────────────────────────
-    // NEW: Parenthesized expression view
-    // ─────────────────────────────────────────────
-
-    /**
-     * Renders a node as a fully-parenthesized infix string.
-     * This makes precedence grouping 100% explicit — no ambiguity.
-     *
-     * Example:  a + b * c   →   (a + (b * c))
-     *           a and b or c → ((a and b) or c)
-     *
-     * Usage:  ASTPrinter.toParenString(expressionNode)
-     */
     public static String toParenString(AST node) {
         return switch (node.getType()) {
             case binaryExpression -> {
@@ -237,14 +157,6 @@ public class ASTPrinter implements ASTVisitor<Void> {
         };
     }
 
-    /**
-     * Prints the fully-parenthesized form of every statement in a program.
-     * Useful for verifying that precedence was resolved correctly.
-     *
-     * Example output:
-     *   [valid :=] ((score + bonus) >= 60)
-     *              → expression: (((score + bonus) >= 60) and (attempts < 3))
-     */
     public static void printParenProgram(Nodes.ProgramNode program) {
         System.out.println("=== Parenthesized Expressions (precedence check) ===");
         for (AST stmt : program.statements) {
@@ -266,19 +178,15 @@ public class ASTPrinter implements ASTVisitor<Void> {
             case priorityStatement -> {
                 Nodes.PriorityStatementNode ps = (Nodes.PriorityStatementNode) stmt;
                 System.out.print(indent + "[priority " + ps.priority + "] ");
-                printParenStatement(ps.statement, ""); // inner stmt on same line (no extra indent)
+                printParenStatement(ps.statement, "");
             }
             default -> System.out.println(indent + stmt);
         }
     }
 
-    // ─────────────────────────────────────────────
-    // Tree-drawing helpers (fixed state management)
-    // ─────────────────────────────────────────────
-
     private void printHeader(String label) {
         String ann = pendingAnnotation.isEmpty() ? "" : "  " + pendingAnnotation;
-        pendingAnnotation = ""; // always consume
+        pendingAnnotation = "";
 
         if (isRoot) {
             System.out.println(label + ann);
@@ -292,7 +200,6 @@ public class ASTPrinter implements ASTVisitor<Void> {
         boolean savedIsLast = isLast;
         boolean savedIsRoot = isRoot;
 
-        // Determine the indent to add for children of the current node
         String childIndent  = isRoot ? "" : (isLast ? "    " : "│   ");
         String childPrefix  = prefix + childIndent;
 
@@ -307,11 +214,7 @@ public class ASTPrinter implements ASTVisitor<Void> {
         isLast = savedIsLast;
         isRoot = savedIsRoot;
     }
-/**
-     * Specialized child printer for binary expression nodes.
-     * Sets {@code pendingAnnotation} on each child to explain how the parser
-     * resolved precedence at that edge — this is the "ambiguity annotation" feature.
-     */
+
     private void printBinaryChildren(BinaryExpressionNode n, int parentPrec) {
         String  savedPrefix = prefix;
         boolean savedIsLast = isLast;
@@ -337,14 +240,6 @@ public class ASTPrinter implements ASTVisitor<Void> {
         isRoot = savedIsRoot;
     }
 
-    /**
-     * Builds the inline ambiguity annotation string for a child of a binary node.
-     *
-     * @param child      the child AST node
-     * @param parentPrec the parent binary node's precedence
-     * @param isLeft     true if this is the left child, false if right
-     * @return annotation string, or "" if no annotation needed
-     */
     private static String buildAmbiguityAnnotation(AST child, int parentPrec, boolean isLeft) {
         if (child.getType() != AST_Type.binaryExpression) return "";
 
@@ -361,7 +256,6 @@ public class ASTPrinter implements ASTVisitor<Void> {
                 return "<- user-grouped: a op (b " + childBin.operator + " c)";
             }
         }
-        // childPrec < parentPrec — should never happen in a correct parse tree
         return "<- !! PARSER BUG: child prec " + childPrec + " < parent prec " + parentPrec;
     }
 }

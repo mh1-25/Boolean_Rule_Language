@@ -9,6 +9,6 @@ public enum AST_Type {
     BooleanLiteral,
     printStatement,
     assignmentStatement,
-    functionCall,        // aggregation: sum(), min(), max(), count(), avg(), any(), all()
-    priorityStatement,   // priority N statement
+    functionCall,
+    priorityStatement,
 }

@@ -16,59 +16,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Interpreter — tree-walking evaluator that implements {@link ASTVisitor}&lt;Object&gt;.
- *
- * <p>Values in this language are either:
- * <ul>
- *   <li>{@code Double}  — for numeric results</li>
- *   <li>{@code Boolean} — for boolean results</li>
- * </ul>
- *
- * <h3>Priority execution</h3>
- * {@code visitProgram} performs a stable sort of statements by priority before
- * executing them.  Statements wrapped in {@link PriorityStatementNode} carry an
- * integer priority; statements without a priority annotation are assigned
- * {@link Integer#MAX_VALUE} and therefore always run last, in source order.
- *
- * <h3>Aggregation functions</h3>
- * {@code visitFunctionCall} dispatches to built-in functions:
- * <ul>
- *   <li>Numeric: {@code sum  min  max  count  avg}</li>
- *   <li>Logical: {@code any  all}  (short-circuit evaluation)</li>
- * </ul>
- *
- * <p>Usage:
- * <pre>
- *   Interpreter interp = new Interpreter();
- *   interp.run(programNode);
- * </pre>
- */
 public class Interpreter implements ASTVisitor<Object> {
 
-    /** Variable store: maps identifier names → current runtime values. */
     private final Map<String, Object> environment = new HashMap<>();
 
-    // ─────────────────────────────────────────────
-    // Public entry point
-    // ─────────────────────────────────────────────
-
-    /** Execute a full program node. */
     public void run(ProgramNode program) {
         program.accept(this);
     }
 
-    // ─────────────────────────────────────────────
-    // ASTVisitor — statements
-    // ─────────────────────────────────────────────
-
     @Override
     public Object visitProgram(ProgramNode n) {
         List<AST> sorted = new ArrayList<>(n.statements);
-        // Stable sort: same-priority statements keep their source order.
         sorted.sort(Comparator.comparingInt(stmt -> {
             if (stmt instanceof PriorityStatementNode p) return p.priority;
-            return Integer.MAX_VALUE; // no priority → run last
+            return Integer.MAX_VALUE;
         }));
         for (AST stmt : sorted) stmt.accept(this);
         return null;
@@ -87,19 +48,13 @@ public class Interpreter implements ASTVisitor<Object> {
         return null;
     }
 
-    /** Unwrap and execute the inner statement. */
     @Override
     public Object visitPriority(PriorityStatementNode n) {
         return n.statement.accept(this);
     }
 
-    // ─────────────────────────────────────────────
-    // ASTVisitor — composite expressions
-    // ─────────────────────────────────────────────
-
     @Override
     public Object visitBinaryExpression(BinaryExpressionNode n) {
-        // Short-circuit logical operators — right side evaluated only when needed
         if (n.operator.equals("or")) {
             if (asBoolean(n.left.accept(this), "or")) return true;
             return asBoolean(n.right.accept(this), "or");
@@ -109,12 +64,10 @@ public class Interpreter implements ASTVisitor<Object> {
             return asBoolean(n.right.accept(this), "and");
         }
 
-        // All other operators: evaluate both sides eagerly
         Object left  = n.left.accept(this);
         Object right = n.right.accept(this);
 
         return switch (n.operator) {
-            // Arithmetic
             case "+" -> asDouble(left, "+") + asDouble(right, "+");
             case "-" -> asDouble(left, "-") - asDouble(right, "-");
             case "*" -> asDouble(left, "*") * asDouble(right, "*");
@@ -123,12 +76,10 @@ public class Interpreter implements ASTVisitor<Object> {
                 if (d == 0) throw new RuntimeException("Runtime error: division by zero");
                 yield asDouble(left, "/") / d;
             }
-            // Comparison (numeric only)
             case "<"  -> asDouble(left, "<")  <  asDouble(right, "<");
             case ">"  -> asDouble(left, ">")  >  asDouble(right, ">");
             case "<=" -> asDouble(left, "<=") <= asDouble(right, "<=");
             case ">=" -> asDouble(left, ">=") >= asDouble(right, ">=");
-            // Equality (works for both types; mixed types are never equal)
             case "="  -> valuesEqual(left, right);
             case "!=" -> !valuesEqual(left, right);
             default   -> throw new RuntimeException(
@@ -149,26 +100,9 @@ public class Interpreter implements ASTVisitor<Object> {
         };
     }
 
-    // ─────────────────────────────────────────────
-    // ASTVisitor — aggregation function calls
-    // ─────────────────────────────────────────────
-
-    /**
-     * Dispatches to built-in aggregation functions.
-     *
-     * <p>Logical aggregators ({@code any}, {@code all}) use short-circuit evaluation:
-     * arguments are evaluated one by one and the function returns as soon as the
-     * result is determined.
-     *
-     * <p>Numeric aggregators ({@code sum}, {@code min}, {@code max}, {@code count},
-     * {@code avg}) evaluate all arguments eagerly.
-     *
-     * @throws RuntimeException for unknown function names or type mismatches
-     */
     @Override
     public Object visitFunctionCall(FunctionCallNode n) {
 
-        // ── Logical aggregation (short-circuit) ──────────────────────────────
         switch (n.name.toLowerCase()) {
             case "any" -> {
                 for (AST arg : n.arguments) {
@@ -184,7 +118,6 @@ public class Interpreter implements ASTVisitor<Object> {
             }
         }
 
-        // ── Numeric aggregation (eager) ──────────────────────────────────────
         List<Object> vals = new ArrayList<>();
         for (AST arg : n.arguments) vals.add(arg.accept(this));
 
@@ -222,11 +155,6 @@ public class Interpreter implements ASTVisitor<Object> {
         };
     }
 
-
-    // ─────────────────────────────────────────────
-    // ASTVisitor — leaf expressions
-    // ─────────────────────────────────────────────
-
     @Override
     public Object visitNumber(NumberLiteralNode n) { return n.value; }
 
@@ -241,10 +169,6 @@ public class Interpreter implements ASTVisitor<Object> {
             );
         return environment.get(n.name);
     }
-
-    // ─────────────────────────────────────────────
-    // Type-coercion helpers with clear error messages
-    // ─────────────────────────────────────────────
 
     private double asDouble(Object value, String ctx) {
         if (value instanceof Double d) return d;
@@ -282,10 +206,6 @@ public class Interpreter implements ASTVisitor<Object> {
             );
     }
 
-    // ─────────────────────────────────────────────
-    // Output formatting
-    // ─────────────────────────────────────────────
-
     private String formatValue(Object value) {
         if (value instanceof Double d) {
             if (d == Math.floor(d) && !Double.isInfinite(d))
@@ -295,7 +215,6 @@ public class Interpreter implements ASTVisitor<Object> {
         return String.valueOf(value);
     }
 
-    /** Expose the variable store for inspection / testing. */
     public Map<String, Object> getEnvironment() {
         return environment;
     }

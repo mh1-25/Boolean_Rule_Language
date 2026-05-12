@@ -9,11 +9,6 @@ import java.util.Scanner;
 
 public class App {
 
-    // ─────────────────────────────────────────────
-    // Persistent interpreter for the REPL session.
-    // Variables defined in one statement survive into the next.
-    // Demo tests each get a fresh interpreter via runProgram(label, src).
-    // ─────────────────────────────────────────────
     private static Interpreter replInterpreter = new Interpreter();
 
     public static void main(String[] args) {
@@ -50,7 +45,6 @@ public class App {
         while (true) {
             System.out.print(">> ");
 
-            // Fix: handle EOF from piped input gracefully instead of crashing
             if (!scanner.hasNextLine()) {
                 System.out.println("Goodbye!");
                 break;
@@ -83,7 +77,6 @@ public class App {
                 continue;
             }
 
-            // Reset: clear both the buffer and the interpreter's variable store
             if (line.equalsIgnoreCase("reset")) {
                 program.setLength(0);
                 replInterpreter = new Interpreter();
@@ -98,12 +91,9 @@ public class App {
 
             if (line.isEmpty()) continue;
 
-            // Accumulate lines; auto-run when the line ends with ';'
             program.append(line).append("\n");
 
             if (line.endsWith(";")) {
-                // Fix: use the persistent replInterpreter so variables survive
-                // between individual statements typed at the prompt.
                 runProgram("Statement", program.toString(), replInterpreter);
                 program.setLength(0);
             }
@@ -112,23 +102,10 @@ public class App {
         scanner.close();
     }
 
-    // ─────────────────────────────────────────────
-    // Core runner
-    // ─────────────────────────────────────────────
-
-    /**
-     * Convenience overload used by demo tests — each demo gets a fresh environment.
-     */
     private static void runProgram(String label, String source) {
         runProgram(label, source, new Interpreter());
     }
 
-    /**
-     * Full runner: lex → parse → print AST → interpret.
-     *
-     * @param interpreter  the interpreter to use (share for REPL persistence,
-     *                     pass a new one for isolated demo tests)
-     */
     private static void runProgram(String label, String source, Interpreter interpreter) {
         System.out.println("┌─────────────────────────────────────────────");
         System.out.println("│ " + label);
@@ -136,7 +113,6 @@ public class App {
         System.out.println("└─────────────────────────────────────────────");
 
         try {
-            // 1. Lex
             Lexer lexer = new Lexer(source);
             List<Token> tokens = lexer.tokenize();
 
@@ -145,17 +121,13 @@ public class App {
                 System.out.println("  " + token);
             }
 
-            // 2. Parse → AST
             Parser parser = new Parser(tokens);
             Nodes.ProgramNode ast = parser.parse();
 
-            // 3. Print AST tree (with precedence/ambiguity annotations)
             ASTPrinter.printProgram(ast);
 
-            // 4. Print fully-parenthesized form for precedence verification
             ASTPrinter.printParenProgram(ast);
 
-            // 5. Interpret
             System.out.println("--- Output ---");
             interpreter.run(ast);
 
@@ -165,10 +137,6 @@ public class App {
 
         System.out.println();
     }
-
-    // ─────────────────────────────────────────────
-    // Help text
-    // ─────────────────────────────────────────────
 
     private static void printHelp() {
         System.out.println();
@@ -203,14 +171,8 @@ public class App {
         System.out.println();
     }
 
-    // ─────────────────────────────────────────────
-    // Built-in demo test cases
-    // ─────────────────────────────────────────────
-
     private static void runDemoTests() {
         System.out.println("\n══════════ DEMO TESTS ══════════\n");
-
-        // ── Original tests ────────────────────────────────────────────────────
 
         runProgram("Basic arithmetic print",
                 "x := 5;\n" +
@@ -248,30 +210,27 @@ public class App {
                 "neither := not big and not small;\n" +
                 "print neither;\n");
 
-        // ── Ambiguity / precedence demonstrations ─────────────────────────────
-
         runProgram("Precedence: a + b * c  (child annotation shows tighter binding)",
                 "a := 2;\n" +
                 "b := 3;\n" +
                 "c := 4;\n" +
-                "result := a + b * c;\n" +    // expects 14, not 20
+                "result := a + b * c;\n" + 
                 "print result;\n");
 
         runProgram("Associativity: a - b - c  (left-assoc annotation on left child)",
                 "a := 10;\n" +
                 "b := 3;\n" +
                 "c := 2;\n" +
-                "result := a - b - c;\n" +    // expects 5 = (10-3)-2, not 10-(3-2)=9
+                "result := a - b - c;\n" + 
                 "print result;\n");
 
         runProgram("Mixed precedence: a or b and c  (and binds tighter than or)",
                 "a := false;\n" +
                 "b := true;\n" +
                 "c := true;\n" +
-                "result := a or b and c;\n" +  // expects true = false or (true and true)
+                "result := a or b and c;\n" + 
                 "print result;\n");
 
-        // ── Aggregation functions ─────────────────────────────────────────────
 
         runProgram("Numeric aggregation: sum, min, max, count, avg",
                 "total   := sum(10, 20, 30);\n" +
@@ -289,10 +248,10 @@ public class App {
                 "a := true;\n" +
                 "b := false;\n" +
                 "c := true;\n" +
-                "print any(a, b, c);\n" +   // true  (short-circuits on a)
-                "print all(a, b, c);\n" +   // false (short-circuits on b)
-                "print any(false, false);\n" + // false
-                "print all(true, true);\n");    // true
+                "print any(a, b, c);\n" +   
+                "print all(a, b, c);\n" +   
+                "print any(false, false);\n" + 
+                "print all(true, true);\n");    
 
         runProgram("Aggregation in complex rule",
                 "scores := sum(85, 90, 78);\n" +
@@ -300,25 +259,22 @@ public class App {
                 "print scores;\n" +
                 "print pass;\n");
 
-        // ── Rule priorities ───────────────────────────────────────────────────
 
         runProgram("Priority: statements written out of dependency order",
-                "priority 2  y := x * 2;\n" +   // y depends on x
-                "priority 1  x := 10;\n" +        // x must run first
-                "print y;\n");                     // expects 20
+                "priority 2  y := x * 2;\n" +
+                "priority 1  x := 10;\n" +        
+                "print y;\n");                     
 
         runProgram("Priority: multiple levels",
-                "priority 3  z := x + y;\n" +    // runs 3rd
-                "priority 1  x := 5;\n" +          // runs 1st
-                "priority 2  y := x * 3;\n" +      // runs 2nd  (y = 15)
-                "print z;\n");                     // expects 20
+                "priority 3  z := x + y;\n" +  
+                "priority 1  x := 5;\n" +  
+                "priority 2  y := x * 3;\n" +  
+                "print z;\n");                     
 
         runProgram("Priority: non-priority statements run after all priority ones",
-                "print msg;\n" +                   // no priority → runs last
-                "priority 1  msg := true;\n" +     // runs first
-                "priority 2  msg := false;\n");    // runs second (overwrites msg)
-
-        // ── Error cases ───────────────────────────────────────────────────────
+                "print msg;\n" +             
+                "priority 1  msg := true;\n" +     
+                "priority 2  msg := false;\n");  
 
         runProgram("Error: missing semicolon (syntax error)",
                 "x := 42\n" +

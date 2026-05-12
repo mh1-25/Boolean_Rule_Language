@@ -5,31 +5,6 @@ import Token.TokenType;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Recursive-descent parser.
- *
- * GRAMMAR (operator precedence, lowest → highest binding)
- * ─────────────────────────────────────────────────────────
- * program    → statement* EOF
- * statement  → priorityStmt | assignStmt | printStmt
- * priorityStmt → 'priority' NUMBER statement
- * assignStmt → IDENTIFIER ':=' expression ';'
- * printStmt  → 'print' expression ';'
- *
- * expression → orExpr
- * orExpr     → andExpr  ( 'or'  andExpr  )*
- * andExpr    → notExpr  ( 'and' notExpr  )*
- * notExpr    → 'not' notExpr | comparison
- * comparison → addition ( ('='|'!='|'<'|'>'|'<='|'>=') addition )?
- * addition   → multiply ( ('+'|'-') multiply )*
- * multiply   → unary    ( ('*'|'/') unary    )*
- * unary      → '-' unary | primary
- * primary    → NUMBER | 'true' | 'false'
- *            | IDENTIFIER '(' argList ')'   ← function call
- *            | IDENTIFIER
- *            | '(' expression ')'
- * argList    → ( expression ( ',' expression )* )?
- */
 public class Parser {
 
     private final List<Token> tokens;
@@ -39,17 +14,13 @@ public class Parser {
         this.tokens = tokens;
     }
 
-    // ─────────────────────────────────────────────
-    // Token navigation helpers
-    // ─────────────────────────────────────────────
-
     private Token current() {
         return tokens.get(pos);
     }
 
     private Token peek(int offset) {
         int idx = pos + offset;
-        if (idx >= tokens.size()) return tokens.get(tokens.size() - 1); // EOF
+        if (idx >= tokens.size()) return tokens.get(tokens.size() - 1);
         return tokens.get(idx);
     }
 
@@ -79,9 +50,6 @@ public class Parser {
         return false;
     }
 
-    // ─────────────────────────────────────────────
-    // Entry point
-    // ─────────────────────────────────────────────
 
     public Nodes.ProgramNode parse() {
         List<AST> statements = new ArrayList<>();
@@ -91,20 +59,14 @@ public class Parser {
         return new Nodes.ProgramNode(statements);
     }
 
-    // ─────────────────────────────────────────────
-    // Statements
-    // ─────────────────────────────────────────────
-
     private AST parseStatement() {
-        // priority N statement
+
         if (check(TokenType.PRIORITY)) {
             return parsePriorityStatement();
         }
-        // print expression ;
         if (check(TokenType.PRINT)) {
             return parsePrintStatement();
         }
-        // IDENTIFIER ':=' expression ;
         if (check(TokenType.IDENTIFIER) && peek(1).getType() == TokenType.ASSIGN) {
             return parseAssignmentStatement();
         }
@@ -114,16 +76,6 @@ public class Parser {
         );
     }
 
-    /**
-     * priorityStmt → 'priority' NUMBER statement
-     *
-     * The priority number must be a non-negative integer (e.g. 1, 2, 10).
-     * Lower numbers run first.  Statements without a priority run last.
-     *
-     * Example:
-     *   priority 1  x := 10;
-     *   priority 2  y := x * 2;
-     */
     private AST parsePriorityStatement() {
         expect(TokenType.PRIORITY);
         Token numTok = expect(TokenType.NUMBER);
@@ -136,7 +88,7 @@ public class Parser {
         }
         int priority = (int) val;
 
-        AST stmt = parseStatement(); // parse the wrapped statement
+        AST stmt = parseStatement();
         return new Nodes.PriorityStatementNode(priority, stmt);
     }
 
@@ -155,16 +107,10 @@ public class Parser {
         return new Nodes.AssignmentNode(id.getValue(), value);
     }
 
-    // ─────────────────────────────────────────────
-    // Expressions — following the grammar precisely
-    // ─────────────────────────────────────────────
-
-    /** expression → orExpr */
     private AST parseExpression() {
         return parseOrExpr();
     }
 
-    /** orExpr → andExpr ( 'or' andExpr )* */
     private AST parseOrExpr() {
         AST left = parseAndExpr();
         while (check(TokenType.OR)) {
@@ -175,7 +121,6 @@ public class Parser {
         return left;
     }
 
-    /** andExpr → notExpr ( 'and' notExpr )* */
     private AST parseAndExpr() {
         AST left = parseNotExpr();
         while (check(TokenType.AND)) {
@@ -186,7 +131,6 @@ public class Parser {
         return left;
     }
 
-    /** notExpr → 'not' notExpr | comparison */
     private AST parseNotExpr() {
         if (check(TokenType.NOT)) {
             String op = consume().getValue();
@@ -196,8 +140,6 @@ public class Parser {
         return parseComparison();
     }
 
-    /** comparison → addition ( ('='|'!='|'<'|'>'|'<='|'>=') addition )?
-     *  Non-associative: chained comparisons are a syntax error with a clear message. */
     private AST parseComparison() {
         AST left = parseAddition();
         if (isComparisonOperator(current().getType())) {
@@ -205,7 +147,6 @@ public class Parser {
             AST right = parseAddition();
             AST result = new Nodes.BinaryExpressionNode(left, op, right);
 
-            // NEW: detect chained comparisons and give a clear error
             if (isComparisonOperator(current().getType())) {
                 throw new RuntimeException(
                     "Syntax error: chained comparison '" + current().getValue() +
@@ -223,7 +164,6 @@ public class Parser {
                t == TokenType.LTE || t == TokenType.GTE;
     }
 
-    /** addition → multiply ( ('+'|'-') multiply )* */
     private AST parseAddition() {
         AST left = parseMultiply();
         while (check(TokenType.PLUS) || check(TokenType.MINUS)) {
@@ -234,7 +174,6 @@ public class Parser {
         return left;
     }
 
-    /** multiply → unary ( ('*'|'/') unary )* */
     private AST parseMultiply() {
         AST left = parseUnary();
         while (check(TokenType.MUL) || check(TokenType.DIV)) {
@@ -245,7 +184,6 @@ public class Parser {
         return left;
     }
 
-    /** unary → '-' unary | primary */
     private AST parseUnary() {
         if (check(TokenType.MINUS)) {
             String op = consume().getValue();
@@ -255,7 +193,6 @@ public class Parser {
         return parsePrimary();
     }
 
-    /** primary → NUMBER | 'true' | 'false' | IDENTIFIER | '(' expression ')' */
     private AST parsePrimary() {
         Token t = current();
 
@@ -275,9 +212,8 @@ public class Parser {
         }
 
         if (t.getType() == TokenType.IDENTIFIER) {
-            // Look ahead: if next token is '(', this is a function call
             if (peek(1).getType() == TokenType.LPAREN) {
-                consume(); // consume function name
+                consume();
                 return parseFunctionCall(t.getValue());
             }
             consume();
@@ -297,12 +233,7 @@ public class Parser {
             ". Expected a number, boolean, identifier, or '('."
         );
     }
-    /**
-     * argList → ( expression ( ',' expression )* )?
-     *
-     * Called after the function name has been consumed.
-     * Parses:  '(' expr, expr, ... ')'
-     */
+
     private AST parseFunctionCall(String name) {
         expect(TokenType.LPAREN);
         List<AST> args = new ArrayList<>();
